@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BlockNest</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #222;
+      color: #fff;
+    }
+    h1 { margin: 10px; }
+    #score { margin: 10px; font-size: 18px; }
+    #game-board {
+      display: grid;
+      grid-template-columns: repeat(15, 30px);
+      grid-template-rows: repeat(20, 30px);
+      gap: 1px;
+      background: #555;
+      margin-bottom: 20px;
+    }
+    .cell {
+      width: 30px;
+      height: 30px;
+      background: #333;
+      box-sizing: border-box;
+    }
+    .filled { background: #4caf50; }
+    #blocks {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .block {
+      display: inline-grid;
+      grid-template-columns: repeat(5, 30px);
+      grid-template-rows: repeat(5, 30px);
+      gap: 1px;
+      cursor: grab;
+    }
+    .block-cell {
+      width: 30px;
+      height: 30px;
+      background: transparent;
+    }
+    .active { background: #2196f3; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+
+<h1>Block Puzzle</h1>
+<div id="score">Score: 0</div>
+<div id="game-board"></div>
+<div id="blocks"></div>
+<div id="game-over" class="hidden"><h2>Game Over!</h2></div>
+
+<script>
+  const boardWidth = 15, boardHeight = 20;
+  const board = [];
+  const shapes = [
+    [[1]],
+    [[1,1]],
+    [[1],[1]],
+    [[1,1],[1,1]],
+    [[1,1,1]],
+    [[1],[1],[1]],
+    [[1,0],[1,1]],
+    [[0,1],[1,1]],
+    [[1,1,0],[0,1,1]],
+    [[1,1,1],[0,1,0]],
+  ];
+
+  let score = 0;
+
+  const gameBoard = document.getElementById("game-board");
+  const blocksContainer = document.getElementById("blocks");
+  const scoreDisplay = document.getElementById("score");
+  const gameOverDisplay = document.getElementById("game-over");
+
+  function createBoard() {
+    for (let y = 0; y < boardHeight; y++) {
+      const row = [];
+      for (let x = 0; x < boardWidth; x++) {
+        const cell = document.createElement("div");
+        cell.classList.add("cell");
+        cell.dataset.x = x;
+        cell.dataset.y = y;
+        gameBoard.appendChild(cell);
+        row.push(0);
+      }
+      board.push(row);
+    }
+  }
+
+  function renderBoard() {
+    document.querySelectorAll(".cell").forEach(cell => {
+      const x = parseInt(cell.dataset.x);
+      const y = parseInt(cell.dataset.y);
+      cell.classList.toggle("filled", board[y][x] === 1);
+    });
+  }
+
+  function randomShape() {
+    const shape = shapes[Math.floor(Math.random() * shapes.length)];
+    return JSON.parse(JSON.stringify(shape)); // deep copy
+  }
+
+  function generateBlocks() {
+    blocksContainer.innerHTML = "";
+    for (let i = 0; i < 4; i++) {
+      const block = document.createElement("div");
+      block.classList.add("block");
+      const shape = randomShape();
+      block.dataset.shape = JSON.stringify(shape);
+
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 5; c++) {
+          const cell = document.createElement("div");
+          cell.classList.add("block-cell");
+          if (shape[r] && shape[r][c]) cell.classList.add("active");
+          block.appendChild(cell);
+        }
+      }
+
+      block.setAttribute("draggable", true);
+      block.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", block.dataset.shape);
+        e.dataTransfer.effectAllowed = "move";
+      });
+
+      blocksContainer.appendChild(block);
+    }
+  }
+
+  function canPlace(shape, offsetX, offsetY) {
+    for (let y = 0; y < shape.length; y++) {
+      for (let x = 0; x < shape[y].length; x++) {
+        if (shape[y][x]) {
+          const px = offsetX + x;
+          const py = offsetY + y;
+          if (px < 0 || px >= boardWidth || py < 0 || py >= boardHeight || board[py][px]) {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  function placeBlock(shape, offsetX, offsetY) {
+    for (let y = 0; y < shape.length; y++) {
+      for (let x = 0; x < shape[y].length; x++) {
+        if (shape[y][x]) {
+          board[offsetY + y][offsetX + x] = 1;
+        }
+      }
+    }
+    checkLines();
+    score += shape.flat().filter(x => x).length;
+    scoreDisplay.textContent = "Score: " + score;
+    generateBlocks();
+    renderBoard();
+    checkGameOver();
+  }
+
+  function checkLines() {
+    let rowsCleared = 0, colsCleared = 0;
+
+    // Check rows
+    for (let y = 0; y < boardHeight; y++) {
+      if (board[y].every(cell => cell === 1)) {
+        board[y] = Array(boardWidth).fill(0);
+        rowsCleared++;
+      }
+    }
+
+    // Check columns
+    for (let x = 0; x < boardWidth; x++) {
+      if (board.every(row => row[x] === 1)) {
+        for (let y = 0; y < boardHeight; y++) {
+          board[y][x] = 0;
+        }
+        colsCleared++;
+      }
+    }
+
+    score += (rowsCleared + colsCleared) * boardWidth;
+  }
+
+  function checkGameOver() {
+    const blocks = document.querySelectorAll(".block");
+    let possible = false;
+    blocks.forEach(block => {
+      const shape = JSON.parse(block.dataset.shape);
+      for (let y = 0; y < boardHeight; y++) {
+        for (let x = 0; x < boardWidth; x++) {
+          if (canPlace(shape, x, y)) possible = true;
+        }
+      }
+    });
+    if (!possible) {
+      gameOverDisplay.classList.remove("hidden");
+    }
+  }
+
+  gameBoard.addEventListener("dragover", e => e.preventDefault());
+  gameBoard.addEventListener("drop", e => {
+    e.preventDefault();
+    const shape = JSON.parse(e.dataTransfer.getData("text/plain"));
+    const rect = gameBoard.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left) / 31);
+    const y = Math.floor((e.clientY - rect.top) / 31);
+    if (canPlace(shape, x, y)) {
+      placeBlock(shape, x, y);
+    }
+  });
+
+  createBoard();
+  renderBoard();
+  generateBlocks();
+</script>
+
+</body>
+</html>
